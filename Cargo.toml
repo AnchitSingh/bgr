@@ -1,6 +1,6 @@
 [package]
 name = "bgr"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "bgr: BUGGU-GREP, Ultra-fast in-memory log search engine with microsecond queries"
 license = "MIT"
