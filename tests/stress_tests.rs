@@ -1,10 +1,10 @@
-use buggu::logdb::{LogDB};
+use buggu::buggudb::{BugguDB};
 use std::time::Instant;
 
 // #[test]
 // fn test_microsecond_query_performance() {
 //     
-//     let mut db = LogDB::new();
+//     let mut db = BugguDB::new();
 
 //     // Insert 10k log entries
 //     for i in 0..10000 {
@@ -35,7 +35,7 @@ use std::time::Instant;
 #[test]
 fn test_microsecond_insert_performance() {
     
-    let mut db = LogDB::new();
+    let mut db = BugguDB::new();
 
     // Pre-populate with some data
     for i in 0..1000 {
@@ -72,7 +72,7 @@ fn test_microsecond_insert_performance() {
 #[test]
 fn test_microsecond_query_performance() {
     
-    let mut db = LogDB::new();
+    let mut db = BugguDB::new();
 
     // More diverse data to properly test tokenization
     let services = [
@@ -133,7 +133,7 @@ fn test_microsecond_query_performance() {
 #[test]
 fn test_large_dataset_performance() {
     
-    let mut db = LogDB::new();
+    let mut db = BugguDB::new();
 
     println!("Inserting 100k log entries...");
     let mut dataSet = vec![];
@@ -191,7 +191,7 @@ fn test_large_dataset_performance() {
 }
 #[test]
 fn test_structured_queries() {
-    let mut db = LogDB::new();
+    let mut db = BugguDB::new();
 
     // Insert with proper metadata
     db.upsert_log(
@@ -227,7 +227,7 @@ fn test_structured_queries() {
 #[test]
 fn test_memory_efficiency() {
     
-    let mut db = LogDB::new();
+    let mut db = BugguDB::new();
 
     println!("Testing memory efficiency...");
 
@@ -250,7 +250,7 @@ fn test_memory_efficiency() {
 #[test]
 fn test_real_world_log_patterns() {
     
-    let mut db = LogDB::new();
+    let mut db = BugguDB::new();
 
     // Simulate real Apache/Nginx style logs
     let real_logs = vec![

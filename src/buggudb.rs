@@ -1,8 +1,8 @@
 #![allow(clippy::needless_return)]
 
-//! # LogDB Core
+//! # BugguDB Core
 //!
-//! This module provides the core functionality for `LogDB`, an in-memory log indexing
+//! This module provides the core functionality for `BugguDB`, an in-memory log indexing
 //! and search engine. It includes data structures for storing and querying log entries,
 //! as well as mechanisms for efficient tokenization, indexing, and query execution.
 
@@ -59,12 +59,12 @@ pub enum QueryNode {
     Not(Box<QueryNode>),
 }
 
-/// The main database structure for `LogDB`.
+/// The main database structure for `BugguDB`.
 ///
 /// This struct holds all the data necessary for indexing and searching log entries,
 /// including the token-to-document postings, document metadata, and various indexes.
 #[derive(Debug, Clone)]
-pub struct LogDB {
+pub struct BugguDB {
     /// The tokenizer and hasher for processing log content.
     ufhg: UFHGHeadquarters,
     /// The postings list, mapping tokens to the documents that contain them.
@@ -81,7 +81,7 @@ pub struct LogDB {
     max_postings: usize,
     /// The time in seconds after which a document is considered stale.
     stale_secs: u64,
-    /// The configuration for the `LogDB` instance.
+    /// The configuration for the `BugguDB` instance.
     config: LogConfig,
 }
 
@@ -193,8 +193,8 @@ impl Default for Posting {
     }
 }
 
-impl LogDB {
-    /// Creates a new `LogDB` with a default configuration.
+impl BugguDB {
+    /// Creates a new `BugguDB` with a default configuration.
     pub fn new() -> Self {
         Self {
             ufhg: UFHGHeadquarters::new(),
@@ -209,7 +209,7 @@ impl LogDB {
         }
     }
 
-    /// Creates a new `LogDB` with the given configuration.
+    /// Creates a new `BugguDB` with the given configuration.
     pub fn with_config(config: LogConfig) -> Self {
         Self {
             ufhg: UFHGHeadquarters::new(),
@@ -224,10 +224,25 @@ impl LogDB {
         }
     }
 
-    /// Creates a new `LogDB` from a configuration file.
+    /// Creates a new `BugguDB` from a configuration file.
     pub fn from_config_file(path: &str) -> std::io::Result<Self> {
         let config = LogConfig::from_file(path)?;
         Ok(Self::with_config(config))
+    }
+
+    /// Ingests log entries from any source that implements BufRead (e.g., a file, stdin).
+    ///
+    /// This treats each line as a separate document.
+    pub fn ingest_from_reader<R: std::io::BufRead>(&mut self, reader: R) -> std::io::Result<usize> {
+        let mut count = 0;
+        for line in reader.lines() {
+            let line_content = line?;
+            if !line_content.is_empty() {
+                self.upsert_simple(&line_content);
+                count += 1;
+            }
+        }
+        Ok(count)
     }
 
     /// Inserts or updates a log entry with the given content and metadata.

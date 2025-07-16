@@ -115,7 +115,17 @@ impl UFHGHeadquarters {
         while i < bytes.len() {
             let byte = bytes[i];
             let is_whitespace = byte == b' ' || byte == b'\t' || byte == b'\n' || byte == b'\r';
-            if !is_whitespace {
+            if is_whitespace {
+                // Skip whitespace
+                while i < bytes.len() {
+                    let b = bytes[i];
+                    if b == b' ' || b == b'\t' || b == b'\n' || b == b'\r' {
+                        i += 1;
+                    } else {
+                        break;
+                    }
+                }
+            } else {
                 let start = i;
                 while i < bytes.len()
                     && bytes[i] != b' '
@@ -126,8 +136,10 @@ impl UFHGHeadquarters {
                     i += 1;
                 }
                 let word_slice = unsafe { std::str::from_utf8_unchecked(&bytes[start..i]) };
-                if !word_slice.is_empty() {
-                    seq_hash = (lightning_hash_str(word_slice))
+                let trimmed_slice = word_slice.trim_matches(|c: char| !c.is_alphanumeric());
+
+                if !trimmed_slice.is_empty() {
+                    seq_hash = (lightning_hash_str(trimmed_slice))
                         .wrapping_mul(31)
                         .wrapping_add(seq_hash);
                 }
@@ -180,8 +192,10 @@ impl UFHGHeadquarters {
                     i += 1;
                 }
                 let word_slice = unsafe { std::str::from_utf8_unchecked(&bytes[start..i]) };
-                if !word_slice.is_empty() {
-                    let hash = self.lightning_hash_str(word_slice);
+                let trimmed_slice = word_slice.trim_matches(|c: char| !c.is_alphanumeric());
+
+                if !trimmed_slice.is_empty() {
+                    let hash = self.lightning_hash_str(trimmed_slice);
                     self.word_hashes.push(hash);
                 }
             }

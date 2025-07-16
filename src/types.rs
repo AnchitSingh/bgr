@@ -1,7 +1,7 @@
 //! # Core Data Types
 //!
 //! This module defines the fundamental data types and structures used throughout the
-//! LogDB system. These types provide a consistent and efficient representation for
+//! BugguDB system. These types provide a consistent and efficient representation for
 //! key entities such as tokens, document IDs, and log entries.
 
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -38,7 +38,7 @@ pub enum TokenMode {
 /// the raw content, a timestamp, and optional fields for log level and service name.
 #[derive(Debug, Clone)]
 pub struct LogEntry {
-    /// The unique identifier for the log entry, assigned by LogDB.
+    /// The unique identifier for the log entry, assigned by BugguDB.
     pub id: DocId,
     /// The raw, unprocessed content of the log entry.
     pub content: String,
@@ -55,11 +55,11 @@ pub struct LogEntry {
 impl LogEntry {
     /// Creates a new `LogEntry` with the given content and tokenization mode.
     ///
-    /// The `id` is initialized to 0 and will be assigned by LogDB upon insertion.
+    /// The `id` is initialized to 0 and will be assigned by BugguDB upon insertion.
     /// The timestamp is set to the current time.
     pub fn new(content: String, mode: TokenMode) -> Self {
         Self {
-            id: 0, // The ID will be assigned by LogDB during insertion.
+            id: 0, // The ID will be assigned by BugguDB during insertion.
             content,
             timestamp: now_secs(),
             level: None,
@@ -79,7 +79,7 @@ impl LogEntry {
         mode: TokenMode,
     ) -> Self {
         Self {
-            id: 0, // The ID will be assigned by LogDB.
+            id: 0, // The ID will be assigned by BugguDB.
             content,
             timestamp: now_secs(),
             level,

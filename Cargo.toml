@@ -8,13 +8,17 @@ repository = "https://github.com/AnchitSingh/buggu"
 
 [dependencies]
 smallvec = "1.11"
+clap = { version = "4.0", features = ["derive"] }
+anyhow = "1.0"
+rustyline = "10.0"
 
-[[example]]
-name = "stress_demo"
-path = "examples/stress_demo.rs"
+[[bin]]
+name = "bgr"
+path = "src/main.rs"
 
 [lib]
-crate-type = ["rlib", "cdylib"]
+name = "buggu"
+path = "src/lib.rs"
 
 [profile.release]
 strip = true

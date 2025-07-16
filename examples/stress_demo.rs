@@ -1,11 +1,11 @@
-use buggu::logdb::LogDB;
+use buggu::buggudb::BugguDB;
 use std::time::Instant;
 
 fn main() {
-    println!("🚀 LogDB Stress Test Demo");
+    println!("🚀 BugguDB Stress Test Demo");
     println!("========================");
 
-    let mut db = LogDB::new();
+    let mut db = BugguDB::new();
 
     // Rapid fire insert test
     println!("\n📝 Testing rapid inserts...");

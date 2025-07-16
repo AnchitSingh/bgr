@@ -1,11 +1,11 @@
-//! # LogDB
+//! # BugguDB
 //!
 //! Ultra-fast in-memory log search engine with microsecond query performance.
 //!
 //!
 pub mod codec;
 pub mod config;
-pub mod logdb;
+pub mod buggudb;
 pub mod query;
 pub mod types;
 pub mod ufhg;
@@ -13,7 +13,7 @@ pub mod utils;
 
 // Re-export main types
 pub use config::LogConfig;
-pub use logdb::LogDB;
+pub use buggudb::BugguDB;
 pub use query::QueryNode;
 pub use types::{LogEntry, TokenMode};
 

@@ -1,6 +1,6 @@
-//! # LogDB Configuration
+//! # BugguDB Configuration
 //!
-//! This module defines the configuration structures and default settings for LogDB,
+//! This module defines the configuration structures and default settings for BugguDB,
 //! the core component responsible for log indexing and querying. It provides a
 //! flexible way to customize the behavior of the logging system, including log
 //! levels, service mappings, and indexing strategies.
@@ -12,7 +12,7 @@ use std::io;
 
 /// Defines the configuration for log parsing, indexing, and querying.
 ///
-/// This struct holds all the settings that control how LogDB operates. It includes
+/// This struct holds all the settings that control how BugguDB operates. It includes
 /// parameters for managing in-memory data structures, defining custom log levels
 /// and services, and enabling advanced features like N-gram indexing and pattern
 /// extraction.
@@ -34,7 +34,7 @@ pub struct LogConfig {
     /// for efficient filtering and aggregation of logs by service.
     pub services: BugguHashSet<u64, u8>,
 
-    /// A flag to enable or disable N-gram indexing. When enabled, LogDB creates
+    /// A flag to enable or disable N-gram indexing. When enabled, BugguDB creates
     /// N-grams from log messages to support more flexible substring queries.
     pub enable_ngrams: bool,
 
@@ -82,7 +82,7 @@ impl LogConfig {
     ///
     /// Note: This function currently returns a default configuration and does not
     /// yet support parsing from a file. Future implementations will parse a
-    /// configuration file (e.g., JSON or TOML) to customize the LogDB instance.
+    /// configuration file (e.g., JSON or TOML) to customize the BugguDB instance.
     ///
     /// # Arguments
     /// * `path` - The path to the configuration file.
