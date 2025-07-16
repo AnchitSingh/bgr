@@ -1,0 +1,23 @@
+[package]
+name = "buggu"
+version = "0.1.0"
+edition = "2021"
+description = "Ultra-fast in-memory log search engine with microsecond queries"
+license = "MIT"
+repository = "https://github.com/AnchitSingh/buggu"
+
+[dependencies]
+smallvec = "1.11"
+
+[[example]]
+name = "stress_demo"
+path = "examples/stress_demo.rs"
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[profile.release]
+strip = true
+lto = "fat"
+codegen-units = 1
+opt-level = 3
