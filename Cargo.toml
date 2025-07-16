@@ -1,10 +1,10 @@
 [package]
-name = "buggu"
+name = "bgr"
 version = "0.1.0"
 edition = "2021"
-description = "Ultra-fast in-memory log search engine with microsecond queries"
+description = "bgr: Buggu-GREP, Ultra-fast in-memory log search engine with microsecond queries"
 license = "MIT"
-repository = "https://github.com/AnchitSingh/buggu"
+repository = "https://github.com/AnchitSingh/bgr"
 
 [dependencies]
 smallvec = "1.11"
@@ -17,7 +17,7 @@ name = "bgr"
 path = "src/main.rs"
 
 [lib]
-name = "buggu"
+name = "bgr"
 path = "src/lib.rs"
 
 [profile.release]

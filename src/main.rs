@@ -1,7 +1,7 @@
 // src/main.rs
 
 use anyhow::Result;
-use buggu::BugguDB; // Use our library
+use bgr::BugguDB; // Use our library
 use clap::Parser;
 use std::fs::File;
 use std::io::{self, BufReader};

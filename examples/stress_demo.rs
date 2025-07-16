@@ -1,4 +1,4 @@
-use buggu::buggudb::BugguDB;
+use bgr::buggudb::BugguDB;
 use std::time::Instant;
 
 fn main() {
