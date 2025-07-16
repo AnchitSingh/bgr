@@ -18,10 +18,7 @@ pub const TAG_DIFF: u8 = 1;
 #[derive(Debug, PartialEq)]
 pub enum Frame {
     /// A full snapshot of a document, containing all its tokens.
-    Full {
-        doc_id: DocId,
-        tokens: Vec<Tok>,
-    },
+    Full { doc_id: DocId, tokens: Vec<Tok> },
     /// A differential update, containing tokens to be removed and added.
     Diff {
         doc_id: DocId,
