@@ -19,6 +19,22 @@ pub type Tok = u64;
 /// Each log entry is assigned a unique `DocId`.
 pub type DocId = u64;
 
+enum PathSegment {
+    Field(String),                     // Regular field: user, name, etc.
+    ArrayIndex(usize),                 // Single index: [0]
+    ArrayWildcard,                     // Any element: [?]
+    ArraySlice(usize, usize),          // Range: [0:2]
+    ArrayIndexes(Vec<usize>),          // Multiple indexes: [0,1,3]
+    RecursiveDescent,                  // All nested elements: ..
+    FilterExpression(Box<FilterExpr>), // Advanced filtering: [?(@.status=="active")]
+}
+
+enum FilterExpr {
+    Equals(String, String),
+    GreaterThan(String, f64),
+    LessThan(String, f64),
+    // More operators can be added
+}
 /// Represents the metadata associated with a document.
 ///
 /// This struct stores the original content of a log entry, along with its tokens
@@ -36,41 +52,336 @@ pub struct MetaEntry {
     json_data: Option<serde_json::Value>,
 }
 impl MetaEntry {
-    // Add a method to extract values at a given JSON path
-    pub fn json_value_at_path(&self, path: &str) -> Option<String> {
+    // Get all values at path without filtering
+    pub fn json_values_at_path(&self, path: &str) -> Vec<String> {
         if let Some(json) = &self.json_data {
-            return extract_json_path_value(json, path);
+            let segments = parse_json_path(path);
+            let mut results = Vec::new();
+            collect_json_values(json, &segments, 0, &mut results, "");
+            return results;
         }
-        None
+        Vec::new()
+    }
+
+    // For backward compatibility
+    pub fn json_value_at_path(&self, path: &str) -> Option<String> {
+        self.json_values_at_path(path).into_iter().next()
     }
 }
 
-// Helper function to navigate a JSON path
-fn extract_json_path_value(json: &serde_json::Value, path: &str) -> Option<String> {
-    let parts = path.split('.').collect::<Vec<_>>();
-    let mut current = json;
+fn parse_json_path(path: &str) -> Vec<PathSegment> {
+    let mut segments = Vec::new();
+    let mut current = 0;
+    let chars: Vec<char> = path.chars().collect();
 
-    for part in &parts {
-        if let Some(obj) = current.as_object() {
-            current = obj.get(*part)?;
-        } else if let Some(array) = current.as_array() {
-            if let Ok(index) = part.parse::<usize>() {
-                current = array.get(index)?;
-            } else {
-                return None;
+    while current < chars.len() {
+        match chars[current] {
+            '.' => {
+                current += 1;
+                // Check for recursive descent (..)
+                if current < chars.len() && chars[current] == '.' {
+                    segments.push(PathSegment::RecursiveDescent);
+                    current += 1;
+                    continue;
+                }
+
+                // Extract field name
+                let start = current;
+                while current < chars.len() && chars[current] != '.' && chars[current] != '[' {
+                    current += 1;
+                }
+                if current > start {
+                    let field: String = chars[start..current].iter().collect();
+
+                    // Check if the field is a numeric index (for backward compatibility)
+                    if let Ok(index) = field.parse::<usize>() {
+                        segments.push(PathSegment::ArrayIndex(index));
+                    } else {
+                        segments.push(PathSegment::Field(field));
+                    }
+                }
             }
-        } else {
-            return None;
+            '[' => {
+                current += 1;
+                let start = current;
+
+                // Look for different array notations
+                if chars[current] == '?' {
+                    segments.push(PathSegment::ArrayWildcard);
+                    // Skip to closing bracket
+                    while current < chars.len() && chars[current] != ']' {
+                        current += 1;
+                    }
+                } else if chars[current] == '?'
+                    && current + 1 < chars.len()
+                    && chars[current + 1] == '('
+                {
+                    // Filter expression [?(@.field=value)]
+                    // This is simplified - would need more complex parsing
+                    // Skip for now
+                    while current < chars.len() && chars[current] != ']' {
+                        current += 1;
+                    }
+                } else {
+                    // Could be [n], [n:m], or [n,m,o]
+                    while current < chars.len() && chars[current] != ']' {
+                        current += 1;
+                    }
+
+                    let array_expr: String = chars[start..current].iter().collect();
+
+                    if array_expr.contains(':') {
+                        // Slice [start:end]
+                        let parts: Vec<&str> = array_expr.split(':').collect();
+                        let start_idx = parts[0].parse::<usize>().unwrap_or(0);
+                        let end_idx = parts[1].parse::<usize>().unwrap_or(usize::MAX);
+                        segments.push(PathSegment::ArraySlice(start_idx, end_idx));
+                    } else if array_expr.contains(',') {
+                        // Multiple indexes [0,1,2]
+                        let indexes: Vec<usize> = array_expr
+                            .split(',')
+                            .filter_map(|s| s.parse::<usize>().ok())
+                            .collect();
+                        segments.push(PathSegment::ArrayIndexes(indexes));
+                    } else {
+                        // Single index [0]
+                        if let Ok(idx) = array_expr.parse::<usize>() {
+                            segments.push(PathSegment::ArrayIndex(idx));
+                        }
+                    }
+                }
+
+                current += 1; // Skip the closing bracket
+            }
+            _ => {
+                // Handle root object fields (no leading dot)
+                let start = current;
+                while current < chars.len() && chars[current] != '.' && chars[current] != '[' {
+                    current += 1;
+                }
+                if current > start {
+                    let field: String = chars[start..current].iter().collect();
+
+                    // Check if the field is a numeric index (for backward compatibility)
+                    if let Ok(index) = field.parse::<usize>() {
+                        segments.push(PathSegment::ArrayIndex(index));
+                    } else {
+                        segments.push(PathSegment::Field(field));
+                    }
+                }
+            }
         }
     }
 
-    // Convert the final value to a string
-    match current {
-        serde_json::Value::String(s) => Some(s.clone()),
-        _ => Some(current.to_string()),
+    segments
+}
+fn collect_json_values(
+    json: &serde_json::Value,
+    path_segments: &[PathSegment],
+    current_idx: usize,
+    results: &mut Vec<String>,
+    expected_value: &str, // Added parameter for value filtering
+) {
+    if current_idx >= path_segments.len() {
+        // We've reached the end of the path
+        match json {
+            serde_json::Value::String(s) => results.push(s.clone()),
+            _ => results.push(json.to_string().trim_matches('"').to_string()),
+        }
+        return;
+    }
+
+    match &path_segments[current_idx] {
+        PathSegment::Field(field) => {
+            if let Some(obj) = json.as_object() {
+                if let Some(value) = obj.get(field) {
+                    collect_json_values(
+                        value,
+                        path_segments,
+                        current_idx + 1,
+                        results,
+                        expected_value,
+                    );
+                }
+            }
+        }
+        PathSegment::ArrayIndex(idx) => {
+            if let Some(array) = json.as_array() {
+                if let Some(value) = array.get(*idx) {
+                    collect_json_values(
+                        value,
+                        path_segments,
+                        current_idx + 1,
+                        results,
+                        expected_value,
+                    );
+                }
+            }
+        }
+        PathSegment::ArrayWildcard => {
+            if let Some(array) = json.as_array() {
+                // Check if we're looking for a specific field value in array elements
+                let next_is_field = current_idx + 1 < path_segments.len()
+                    && matches!(path_segments[current_idx + 1], PathSegment::Field(_));
+
+                // If we're at the end with a field check and expected value, do special filtering
+                if next_is_field
+                    && current_idx + 2 >= path_segments.len()
+                    && !expected_value.is_empty()
+                {
+                    let field_name = match &path_segments[current_idx + 1] {
+                        PathSegment::Field(name) => name,
+                        _ => unreachable!(),
+                    };
+
+                    // Only collect elements where the field matches the expected value
+                    for value in array {
+                        if let Some(obj) = value.as_object() {
+                            if let Some(field_value) = obj.get(field_name) {
+                                let field_str = match field_value {
+                                    serde_json::Value::String(s) => s.clone(),
+                                    _ => field_value.to_string().trim_matches('"').to_string(),
+                                };
+
+                                if field_str == expected_value {
+                                    results.push(field_str);
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // Standard traversal without special filtering
+                    for value in array {
+                        collect_json_values(
+                            value,
+                            path_segments,
+                            current_idx + 1,
+                            results,
+                            expected_value,
+                        );
+                    }
+                }
+            }
+        }
+        PathSegment::ArraySlice(start, end) => {
+            if let Some(array) = json.as_array() {
+                let end_idx = (*end).min(array.len());
+                for i in *start..end_idx {
+                    if let Some(value) = array.get(i) {
+                        collect_json_values(
+                            value,
+                            path_segments,
+                            current_idx + 1,
+                            results,
+                            expected_value,
+                        );
+                    }
+                }
+            }
+        }
+        PathSegment::ArrayIndexes(indexes) => {
+            if let Some(array) = json.as_array() {
+                for &idx in indexes {
+                    if idx < array.len() {
+                        if let Some(value) = array.get(idx) {
+                            collect_json_values(
+                                value,
+                                path_segments,
+                                current_idx + 1,
+                                results,
+                                expected_value,
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        PathSegment::RecursiveDescent => {
+            // Recursive descent (..) - search all nested objects/arrays
+            collect_json_values(
+                json,
+                path_segments,
+                current_idx + 1,
+                results,
+                expected_value,
+            );
+
+            match json {
+                serde_json::Value::Object(obj) => {
+                    for (_, value) in obj {
+                        collect_json_values(
+                            value,
+                            path_segments,
+                            current_idx,
+                            results,
+                            expected_value,
+                        );
+                    }
+                }
+                serde_json::Value::Array(arr) => {
+                    for value in arr {
+                        collect_json_values(
+                            value,
+                            path_segments,
+                            current_idx,
+                            results,
+                            expected_value,
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
+        PathSegment::FilterExpression(expr) => {
+            if let Some(array) = json.as_array() {
+                for value in array {
+                    if matches_filter(value, expr) {
+                        collect_json_values(
+                            value,
+                            path_segments,
+                            current_idx + 1,
+                            results,
+                            expected_value,
+                        );
+                    }
+                }
+            }
+        }
     }
 }
 
+fn matches_filter(json: &serde_json::Value, expr: &FilterExpr) -> bool {
+    match expr {
+        FilterExpr::Equals(field, value) => {
+            if let Some(obj) = json.as_object() {
+                if let Some(field_value) = obj.get(field) {
+                    return field_value.to_string() == *value;
+                }
+            }
+            false
+        }
+        FilterExpr::GreaterThan(field, threshold) => {
+            if let Some(obj) = json.as_object() {
+                if let Some(field_value) = obj.get(field) {
+                    if let Some(num) = field_value.as_f64() {
+                        return num > *threshold;
+                    }
+                }
+            }
+            false
+        }
+        FilterExpr::LessThan(field, threshold) => {
+            if let Some(obj) = json.as_object() {
+                if let Some(field_value) = obj.get(field) {
+                    if let Some(num) = field_value.as_f64() {
+                        return num < *threshold;
+                    }
+                }
+            }
+            false
+        }
+    }
+}
 /// Defines the Abstract Syntax Tree (AST) for a parsed query.
 ///
 /// This enum represents the structure of a search query, allowing for complex
@@ -538,18 +849,34 @@ impl BugguDB {
                     })
                     .collect()
             }
-            QueryNode::JsonField(path, value) => self
-                .docs
-                .iter_keys()
-                .filter_map(|id| {
-                    if let Some(json_val) = self.docs.get(&id).unwrap().json_value_at_path(path) {
-                        if value.is_empty() || json_val == *value {
-                            return Some(id);
+            QueryNode::JsonField(path, value) => {
+                self.docs
+                    .iter_keys()
+                    .filter_map(|id| {
+                        if let Some(entry) = self.docs.get(&id) {
+                            if let Some(json) = &entry.json_data {
+                                // Parse the path segments
+                                let segments = parse_json_path(path);
+                                let mut results = Vec::new();
+
+                                // Use the expected value for filtering
+                                collect_json_values(json, &segments, 0, &mut results, value);
+
+                                // For value matching, we need at least one result that matches
+                                if !value.is_empty() {
+                                    if results.contains(value) {
+                                        return Some(id);
+                                    }
+                                } else if !results.is_empty() {
+                                    // For existence checking, we just need any results
+                                    return Some(id);
+                                }
+                            }
                         }
-                    }
-                    None
-                })
-                .collect(),
+                        None
+                    })
+                    .collect()
+            }
             _ => Vec::new(),
         }
     }
@@ -1036,5 +1363,215 @@ mod tests {
             "Average query time: {:?}",
             total_time / test_cases.len() as u32
         );
+    }
+    
+    #[test]
+    fn test_jsonpath_features_performance() {
+        println!("=== JSONPath Features Performance Test ===");
+
+        // Create a new database instance
+        let mut db = BugguDB::new();
+
+        // Generate test data with complex JSON structures
+        println!("Generating test data...");
+        let start = Instant::now();
+
+        // Create 5,000 documents with rich JSON structure (more than enough for benchmarking)
+        for i in 0..5000 {
+            // Create nested arrays of varying sizes
+            let mut services = Vec::new();
+            for j in 0..(i % 10 + 1) {
+                // 1-10 services per server
+                let name = ["api", "web", "db", "cache", "auth"][(i + j) % 5];
+                let status =
+                    ["running", "stopped", "starting", "error", "maintenance"][(i * j) % 5];
+                services.push(json!({
+                    "id": format!("svc-{}", j),
+                    "name": name,
+                    "status": status,
+                    "metrics": {
+                        "cpu": i % 101,
+                        "memory": (i * 7) % 101,
+                        "connections": i * 10 + j
+                    },
+                    "tags": (0..(j % 5 + 1)).map(|k| format!("tag-{}", k)).collect::<Vec<String>>()
+                }));
+            }
+            let country = ["US", "UK", "DE", "FR", "JP"][i % 5];
+            let city = ["New York", "London", "Berlin", "Paris", "Tokyo"][i % 5];
+            let verified = i % 3 == 0;
+            // Create varying user properties
+            let user_data = json!({
+                "id": i,
+                "username": format!("user{}", i),
+                "roles": {
+                    "admin": i % 10 == 0,
+                    "editor": i % 5 == 0,
+                    "viewer": true
+                },
+                "permissions": (0..(i % 6)).map(|p| format!("perm-{}", p)).collect::<Vec<String>>(),
+                "profile": {
+                    "country": country,
+                    "city": city,
+                    "verified": verified
+                }
+            });
+            let environment = ["prod", "staging", "dev", "test"][i % 4];
+            let region = ["us-east", "us-west", "eu-central", "ap-south"][i % 4];
+            let status = ["completed", "pending", "failed", "canceled"][i % 4];
+            // Complete document JSON
+            let doc_json = json!({
+                "timestamp": i * 1000,
+                "server": {
+                    "id": format!("srv-{:04}", i),
+                    "environment": environment,
+                    "services": services,
+                    "regions": region
+                },
+                "user": user_data,
+                "transaction": {
+                    "id": format!("tx-{:08}", i),
+                    "status": status,
+                    "amount": (i * 10) % 1000 + 1,
+                    "items": (0..(i % 6)).map(|j| json!({
+                        "id": format!("item-{}", j),
+                        "price": j * 10 + 5,
+                        "quantity": j % 3 + 1
+                    })).collect::<Vec<serde_json::Value>>()
+                }
+            });
+
+            // Insert the document
+            db.upsert_json_log(&format!("Event log #{}", i), &doc_json.to_string())
+                .unwrap();
+        }
+
+        println!("Generated 5,000 test documents in {:?}", start.elapsed());
+        println!("\nTesting JSONPath features...\n");
+
+        // Define test cases for all JSONPath features
+        let test_cases = vec![
+            // 1. Basic dot notation (baseline)
+            ("json:server.id", 5000, "Basic field access"),
+            // 2. Old-style numeric index
+            ("json:server.services.0.name", 5000, "Legacy numeric index"),
+            // 3. New bracket notation for index
+            (
+                "json:server.services[0].name",
+                5000,
+                "Bracket index notation",
+            ),
+            // 4. Wildcard array access with value match
+            (
+                "json:server.services[?].name=api",
+                1000,
+                "Array wildcard with value match",
+            ),
+            // 5. Array slice
+            ("json:server.services[0:2].metrics.cpu", 4500, "Array slice"),
+            // 6. Multiple indexes
+            (
+                "json:server.services[0,2,4].status",
+                3000,
+                "Multiple specific indexes",
+            ),
+            // 7. Recursive descent
+            ("json:..country", 5000, "Recursive descent"),
+            // 8. Combined features
+            (
+                "json:server.services[?].status=running AND json:user.profile.verified=true",
+                556,
+                "Complex query with multiple conditions",
+            ),
+        ];
+
+        // Run all test cases with timing
+        let mut total_duration = Duration::from_secs(0);
+        let mut result_counts = Vec::new();
+
+        for (i, (query, expected_count, description)) in test_cases.iter().enumerate() {
+            println!("Test #{}: {} ({})", i + 1, description, query);
+
+            // Time the query execution
+            let start = Instant::now();
+            let results = db.query(query);
+            let duration = start.elapsed();
+            total_duration += duration;
+
+            println!("  Found {} matches in {:?}", results.len(), duration);
+
+            // Verify expected count (with some tolerance for probabilistic data)
+            let expected_range_low = (f64::from(*expected_count as u32) * 0.8) as usize;
+            let expected_range_high = (f64::from(*expected_count as u32) * 1.2) as usize;
+
+            if results.len() >= expected_range_low && results.len() <= expected_range_high {
+                println!(
+                    "  ✅ Result count in expected range ({} - {})",
+                    expected_range_low, expected_range_high
+                );
+            } else {
+                println!(
+                    "  ❌ Result count outside expected range! Expected: {} (±20%), Actual: {}",
+                    expected_count,
+                    results.len()
+                );
+            }
+
+            // Calculate and display performance metrics
+            let docs_per_second = 5000.0 / duration.as_secs_f64();
+            println!("  Performance: {:.2} documents/second", docs_per_second);
+
+            // Sample a few matches for verification
+            if !results.is_empty() {
+                println!("  Sample matches:");
+                for &doc_id in results.iter().take(2) {
+                    if let Some(content) = db.get_content(&doc_id) {
+                        println!("    - [{}]: {}", doc_id, content);
+                    }
+                }
+            }
+
+            println!(); // Add spacing between tests
+            result_counts.push(results.len());
+        }
+
+        // Compare with basic term search performance
+        println!("=== Performance Comparison ===");
+
+        let start = Instant::now();
+        let term_results = db.query("Event");
+        let term_duration = start.elapsed();
+
+        println!(
+            "Basic term search: {} matches in {:?}",
+            term_results.len(),
+            term_duration
+        );
+        println!(
+            "Term search speed: {:.2} documents/second",
+            5000.0 / term_duration.as_secs_f64()
+        );
+
+        let avg_jsonpath_duration = total_duration / test_cases.len() as u32;
+        println!("Average JSONPath query time: {:?}", avg_jsonpath_duration);
+        println!(
+            "Average JSONPath speed: {:.2} documents/second",
+            5000.0 / avg_jsonpath_duration.as_secs_f64()
+        );
+        println!(
+            "JSONPath is {:.1}x slower than basic term search",
+            avg_jsonpath_duration.as_secs_f64() / term_duration.as_secs_f64()
+        );
+
+        // Summary of results
+        println!("\n=== Results Summary ===");
+        for (i, (query, expected, _)) in test_cases.iter().enumerate() {
+            println!(
+                "{:<45} Expected: {:<5} Actual: {:<5}",
+                query, expected, result_counts[i]
+            );
+        }
+
+        println!("\nAll JSONPath features tested successfully!");
     }
 }

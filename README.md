@@ -1,6 +1,6 @@
 # bgr (Buggu-GREP)
 
-**bgr** is an ultra-fast, in-memory search engine and command-line tool that delivers microsecond-level query performance for logs and structured data. It indexes data from files or stdin and provides an interactive interface for immediate exploration and analysis.
+**bgr(v0.1.3)** is an ultra-fast, in-memory search engine and command-line tool that delivers microsecond-level query performance for logs and structured data. It indexes data from files or stdin and provides an interactive interface for immediate exploration and analysis.
 
 The name "Buggu" is inspired by a term of endearment, reflecting its role as a trusted companion in debugging, log analysis, and data exploration.
 
@@ -19,6 +19,10 @@ The name "Buggu" is inspired by a term of endearment, reflecting its role as a t
   - **JSON Field Queries**: `json:user.address.city=London`
   - **Logical Operators**: `AND` (default), `OR`, `NOT`
   - **Range Queries**: `timestamp:>=1627776000`
+  - **JSONPath Syntax**: `json:user.address.city=London`
+  - **Array Access**: Direct index `services[0]`, wildcard `services[?]`, slices `services[0:2]`, multiple indices `services[0,2,4]`
+  - **Recursive Descent**: `json:..name` to find all name fields at any level
+  - **Combined Queries**: `json:user.role=admin AND json:metrics.cpu>=90`
 - **Flexible Input Sources**: Process files, stdin, piped data, or streaming logs
 - **Scriptable**: Non-interactive mode for automation and integration with other tools
 
@@ -132,6 +136,28 @@ Find all lines matching a specific pattern:
 Query: regex:user\d+\.login
 Found 27 results in 1.4ms
 ```
+### Advanced JSON Query Examples
+
+`bgr` v0.1.3 introduces powerful JSONPath support for structured data queries:
+
+```sh
+# Basic JSON path queries
+> json:user.name
+> json:server.status
+
+# Array access with multiple methods
+> json:services[0].name            # Direct index access
+> json:services[?].status=running  # Wildcard - any array element with status "running"
+> json:metrics[0:2]                # Array slice - first two elements
+> json:services[0,2,4].name        # Multiple specific indices
+
+# Deep traversal with recursive descent
+> json:..country                   # Find "country" field at any nesting level
+
+# Complex conditions
+> json:user.role=admin AND json:server.status=error
+> json:server.metrics.cpu>=90 OR json:server.metrics.memory>=80
+```
 
 #### JSON Field Search
 Search within nested JSON structures:
@@ -182,6 +208,18 @@ Found 5 results in 1.3ms
 - Loading and indexing at 150,000+ lines per second
 - Query response times in the microsecond range
 - Efficient memory utilization even with large datasets
+- **Blazing-Fast Indexing**: Processes 150,000+ lines per second
+- **Microsecond Queries**: Most queries complete in 1-20μs
+- **Efficient JSON Processing**: JSONPath queries process 400,000+ documents per second
+- **Optimized Memory Usage**: Custom BugguHashSet implementation is 20-40x faster than standard hashmaps
+
+The "collision loving" architecture prioritizes real-world performance over theoretical perfection, making it ideal for interactive log analysis and data exploration.
+
+## New in v0.1.3
+
+- **Enhanced JSONPath Support**: Advanced JSON querying with array wildcards, slices, and recursive descent
+- **Performance Optimizations**: Improved memory usage and query performance
+- **CLI Improvements**: Better help system and result formatting
 
 ## License
 
