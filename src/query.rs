@@ -36,6 +36,8 @@ pub enum QueryNode {
     Or(Vec<QueryNode>),
     /// A logical NOT, excluding documents that match the sub-query.
     Not(Box<QueryNode>),
+    /// A search for a term within a specific field, such as `level:ERROR`.
+    JsonField(String, String),
 }
 
 /// Parses a raw query string into a `QueryNode` AST.
@@ -51,7 +53,7 @@ pub enum QueryNode {
 ///
 /// # Returns
 /// A `QueryNode` representing the root of the parsed query AST.
-pub fn parse_query(q: &str, config: &LogConfig) -> QueryNode {
+pub fn parse_query(q: &str, _config: &LogConfig) -> QueryNode {
     let mut nodes = Vec::new();
     let mut it = q.split_whitespace().peekable();
 
@@ -89,6 +91,14 @@ pub fn parse_query(q: &str, config: &LogConfig) -> QueryNode {
                     }
                 }
                 "regex" => nodes.push(QueryNode::Regex(val)),
+                "json" => {
+                    if let Some((path, value)) = val.split_once('=') {
+                        nodes.push(QueryNode::JsonField(path.to_string(), value.to_string()));
+                    } else {
+                        // Just check that the path exists
+                        nodes.push(QueryNode::JsonField(val, "".to_string()));
+                    }
+                }
                 "timestamp" => {
                     if let Some(lo) = val.strip_prefix(">=") {
                         let lo = lo.parse::<u64>().unwrap_or(0);
@@ -115,8 +125,42 @@ pub fn parse_query(q: &str, config: &LogConfig) -> QueryNode {
                     if let Some(last) = nodes.pop() {
                         if let Some(next_tok) = it.next() {
                             let next_node = if next_tok.contains(':') {
-                                // Simplified parsing for the next term in an OR clause.
-                                QueryNode::Term(next_tok.to_string())
+                                // Handle field:value syntax for the right side of OR
+                                let mut sp = next_tok.splitn(2, ':');
+                                let field = sp.next().unwrap();
+                                let mut val = sp.next().unwrap().to_string();
+
+                                // Handle quoted values
+                                if val.starts_with('"') && !val.ends_with('"') {
+                                    for nxt in it.by_ref() {
+                                        val.push(' ');
+                                        val.push_str(nxt);
+                                        if nxt.ends_with('"') {
+                                            break;
+                                        }
+                                    }
+                                    val = val.trim_matches('"').to_string();
+                                } else {
+                                    val = val.trim_matches('"').to_string();
+                                }
+
+                                match field {
+                                    "json" => {
+                                        if let Some((path, value)) = val.split_once('=') {
+                                            QueryNode::JsonField(
+                                                path.to_string(),
+                                                value.to_string(),
+                                            )
+                                        } else {
+                                            QueryNode::JsonField(val, "".to_string())
+                                        }
+                                    }
+                                    "level" => QueryNode::FieldTerm("level", val),
+                                    "service" => QueryNode::FieldTerm("service", val),
+                                    "contains" => QueryNode::Contains(val),
+                                    "regex" => QueryNode::Regex(val),
+                                    _ => QueryNode::Term(next_tok.to_string()),
+                                }
                             } else {
                                 QueryNode::Term(next_tok.to_string())
                             };
