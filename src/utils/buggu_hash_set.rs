@@ -843,7 +843,7 @@ where
     pub fn entry(&mut self, key: K) -> BugguEntry<K, V> {
         let bucket_idx = self.get_rank_for_key(&key);
 
-        let entry_info: Option<usize> = {
+        let _entry_info: Option<usize> = {
             let bucket = unsafe { self.storage.get_unchecked(bucket_idx) };
             match bucket {
                 BugguBucket::Empty => None,
